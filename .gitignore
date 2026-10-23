@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+
+# Device-only settings and operational files
+config/*.local.json
+.env
+.env.*
+*.pem
+*.key
+*.sqlite*
+*.log
+*.bin
+captures/
+.DS_Store
+.runtime-*
+.git-bootstrap-backup.*
+.tilik-runtime-update.tar.gz

@@ -1,0 +1,21 @@
+[Unit]
+Description=Tilik thermal capture
+After=local-fs.target
+
+[Service]
+User=tilik
+Group=tilik
+SupplementaryGroups=video
+WorkingDirectory=/opt/tilik-edge
+ExecStart=/usr/bin/python3 -m edge capture --config /etc/tilik-edge.json
+Restart=on-failure
+RestartSec=10
+StateDirectory=tilik-edge
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3 @@
+# Python 3.9+ standard library only for capture, API and dashboard.
+# Install ffmpeg and v4l-utils on Raspberry Pi OS for live capture.
+# Optional: numpy when importing legacy leptontest .npy files.

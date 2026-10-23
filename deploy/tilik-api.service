@@ -1,0 +1,21 @@
+[Unit]
+Description=Tilik capture sync API and QA dashboard
+After=network.target
+
+[Service]
+User=tilik
+Group=tilik
+WorkingDirectory=/opt/tilik-edge
+EnvironmentFile=-/etc/tilik-edge.env
+ExecStart=/usr/bin/python3 -m edge api --config /etc/tilik-edge.json
+Restart=on-failure
+RestartSec=5
+StateDirectory=tilik-edge
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

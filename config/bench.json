@@ -1,0 +1,12 @@
+{
+  "mode": "bench_human_body",
+  "custom_threshold": 36.0,
+  "delta_celsius": 0.0,
+  "mad_multiplier": 3.5,
+  "min_cluster_pixels": 4,
+  "max_cluster_pixels": 9600,
+  "debounce_frames": 3,
+  "persistence_seconds": 0.5,
+  "cooldown_seconds": 5.0,
+  "hysteresis_celsius": 2.0
+}

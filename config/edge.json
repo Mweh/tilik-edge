@@ -1,0 +1,9 @@
+{
+  "data_dir": "../data",
+  "rules": "landfill.json",
+  "source": "simulation",
+  "device": "/dev/video0",
+  "confirm_centikelvin": false,
+  "host": "127.0.0.1",
+  "port": 8080
+}

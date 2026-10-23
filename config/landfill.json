@@ -1,0 +1,12 @@
+{
+  "mode": "landfill_production",
+  "custom_threshold": 55.0,
+  "delta_celsius": 10.0,
+  "mad_multiplier": 3.5,
+  "min_cluster_pixels": 9,
+  "max_cluster_pixels": 9600,
+  "debounce_frames": 5,
+  "persistence_seconds": 2.0,
+  "cooldown_seconds": 30.0,
+  "hysteresis_celsius": 3.0
+}

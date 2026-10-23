@@ -1,0 +1,70 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from hotspot.engine import *
+
+class RulesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.engine = RadiometricAutoCaptureEngine(mode=TriggerMode.LANDFILL_PROD, debounce_frames=3,
+            persistence_seconds=1, cooldown_seconds=2, output_dir=self.tmp.name, source='simulation')
+    def tearDown(self):
+        self.tmp.cleanup()
+    def frame(self, temp=70, x=10, side=3, bg=30):
+        raw=[celsius_to_centikelvin(bg)]*19200
+        for y in range(10,10+side):
+            for xx in range(x,x+side): raw[y*160+xx]=celsius_to_centikelvin(temp)
+        return raw
+    def test_duration_capture_and_rearm(self):
+        e=self.engine
+        for t in (0,.2,.4): self.assertIsNone(e.process_frame(self.frame(),clock=t)['action_taken'])
+        result=e.process_frame(self.frame(),clock=1)
+        folder=Path(result['capture_path'])
+        self.assertEqual((folder/'frame_raw.bin').stat().st_size,38400)
+        self.assertEqual((folder/'frame_visual.png').read_bytes()[:8],b'\x89PNG\r\n\x1a\n')
+        self.assertEqual(json.loads((folder/'metadata.json').read_text())['source'],'simulation')
+        self.assertIsNone(e.process_frame(self.frame(),clock=5)['action_taken'])
+        self.assertEqual(e.process_frame(self.frame(30),clock=6)['state'],'IDLE')
+        for t in (7,7.5):e.process_frame(self.frame(),clock=t)
+        self.assertEqual(e.process_frame(self.frame(),clock=8)['action_taken'],'AUTO_CAPTURED')
+    def test_noise_and_moving_regions(self):
+        e=self.engine
+        self.assertEqual(e.process_frame(self.frame(side=1),clock=0)['hotspot_count'],0)
+        for t,x in enumerate((10,30,50,70)):
+            self.assertIsNone(e.process_frame(self.frame(x=x),clock=t)['action_taken'])
+        self.assertEqual(e.consecutive_exceed_count,1)
+    def test_hot_background_and_invalid(self):
+        self.assertEqual(self.engine.compute_dynamic_threshold([60]*19200)[0],70)
+        with self.assertRaises(ValueError):self.engine.process_frame([0]*19200)
+        with self.assertRaises(ValueError):self.engine.process_frame([30000])
+        with self.assertRaises(ValueError):RadiometricAutoCaptureEngine(cooldown_seconds=float('nan'))
+    def test_write_failure_retries(self):
+        e=self.engine
+        e._save_capture_bundle=lambda **kwargs: (_ for _ in ()).throw(OSError('disk full'))
+        e.process_frame(self.frame(),clock=0);e.process_frame(self.frame(),clock=.5)
+        with self.assertRaises(OSError):e.process_frame(self.frame(),clock=1)
+        self.assertNotEqual(e.state,CaptureState.COOLDOWN)
+        self.assertEqual(e.total_captures,0)
+
+    def test_gap_resets_persistence(self):
+        e=self.engine
+        e.process_frame(self.frame(),clock=0)
+        e.process_frame(self.frame(),clock=.5)
+        r=e.process_frame(self.frame(),clock=4)
+        self.assertIsNone(r['action_taken'])
+        self.assertEqual(e.consecutive_exceed_count,1)
+    def test_wall_clock_jump_does_not_trigger_early(self):
+        e=self.engine
+        e.process_frame(self.frame(),timestamp=1000,clock=0)
+        e.process_frame(self.frame(),timestamp=100000,clock=.1)
+        self.assertIsNone(e.process_frame(self.frame(),timestamp=1,clock=.2)['action_taken'])
+        self.assertEqual(e.process_frame(self.frame(),timestamp=2,clock=1)['action_taken'],'AUTO_CAPTURED')
+    def test_upper_area_gate(self):
+        e=self.engine
+        e.max_cluster_pixels=8
+        self.assertEqual(e.process_frame(self.frame(side=3),clock=0)['hotspot_count'],0)
+    def test_inclusive_temperature_boundary(self):
+        e=self.engine
+        self.assertEqual(e.process_frame(self.frame(temp=55),clock=0)['hotspot_count'],1)
+        self.assertEqual(e.process_frame(self.frame(temp=54.99),clock=.1)['hotspot_count'],0)
