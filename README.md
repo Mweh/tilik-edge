@@ -40,7 +40,7 @@ actual capture and subsequent API results, not a separate browser simulation.
 Run on the Mac, replacing the hostname if necessary:
 
 ```bash
-scp -r "/Users/fahmi/Documents/ADA/Challenge/final-challenge/project/Tilik/edge/tilik-edge" pi@raspberrypi.local:~/
+scp -r "yourpath/Tilik/edge/tilik-edge" pi@raspberrypi.local:~/
 ```
 
 Copy source before running simulation, or exclude the local `data/` folder if
