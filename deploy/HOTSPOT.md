@@ -19,6 +19,15 @@ The hotspot address is `10.42.0.1`; API remains on port 8080 if separately start
 This service configures networking only; capture/API services remain independent.
 Ensure the API binds `0.0.0.0`, not localhost.
 
+To reuse an existing secured hotspot with the same SSID and password:
+
+```sh
+nmcli -f NAME,UUID connection show
+sudo python3 deploy/wifi_usb.py --install --existing-connection '<hotspot UUID>'
+```
+
+This validates the AP name/security and retains its network/password settings.
+
 ## Behavior
 
 - Each boot: hotspot ON, including after it was OFF before shutdown.

@@ -123,7 +123,7 @@ def diagnose():
         subprocess.run(command, check=False, timeout=10)
 
 
-def install(interface):
+def install(interface, existing_connection=None):
     if os.geteuid() != 0:
         raise SystemExit('Run with sudo on Raspberry Pi.')
     for command in ('nmcli', 'systemctl', 'udevadm'):
@@ -137,8 +137,19 @@ def install(interface):
     keyfile = profile_dir / 'tilik-payload.nmconnection'
     if CONFIG.exists():
         settings = json.loads(CONFIG.read_text())
-        if settings['interface'] != interface or not keyfile.exists():
+        if settings['interface'] != interface or (settings.get('managed_keyfile', True) and not keyfile.exists()):
             raise SystemExit('Existing configuration differs or keyfile missing; inspect /etc/tilik-payload.json first.')
+    elif existing_connection:
+        connection_uuid = str(uuid.UUID(existing_connection))
+        mode = nm('-g', '802-11-wireless.mode', 'connection', 'show', 'uuid', connection_uuid).stdout.strip()
+        ssid = nm('-g', '802-11-wireless.ssid', 'connection', 'show', 'uuid', connection_uuid).stdout.strip()
+        security = nm('-g', '802-11-wireless-security.key-mgmt', 'connection', 'show', 'uuid', connection_uuid).stdout.strip()
+        if mode != 'ap' or ssid != 'Tilik-Drone-Payload' or security not in ('wpa-psk', 'sae'):
+            raise SystemExit('Existing connection must be a secured AP named Tilik-Drone-Payload.')
+        settings = {'interface': interface, 'connection_uuid': connection_uuid,
+                    'ignore_usb_ids': [], 'managed_keyfile': False}
+        CONFIG.write_text(json.dumps(settings, indent=2) + '\n')
+        CONFIG.chmod(0o600)
     else:
         if keyfile.exists():
             raise SystemExit('Existing hotspot keyfile found; refusing to overwrite its credentials.')
@@ -178,7 +189,10 @@ method=disabled
             stream.write(content)
         CONFIG.write_text(json.dumps(settings, indent=2) + '\n')
         CONFIG.chmod(0o600)
-    nm('connection', 'load', str(keyfile))
+    if settings.get('managed_keyfile', True):
+        nm('connection', 'load', str(keyfile))
+    nm('connection', 'modify', 'uuid', settings['connection_uuid'],
+       'connection.autoconnect', 'yes', 'connection.autoconnect-priority', '999')
     destination = Path('/opt/tilik-network')
     destination.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(__file__, destination / 'wifi_usb.py')
@@ -195,11 +209,12 @@ if __name__ == '__main__':
     mode.add_argument('--install', action='store_true')
     mode.add_argument('--diagnose', action='store_true')
     parser.add_argument('--interface', default='wlan0')
+    parser.add_argument('--existing-connection', help='UUID of an existing secured Tilik-Drone-Payload AP; preserves its password')
     options = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
     if options.diagnose:
         diagnose()
     elif options.install:
-        install(options.interface)
+        install(options.interface, options.existing_connection)
     else:
         run()
