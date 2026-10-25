@@ -210,3 +210,7 @@ No automatic capture deletion is performed. Capture stops when disk free space
 falls below 256 MB. Keep legacy projects until hardware acceptance succeeds.
 For rollback, stop `tilik-capture` and `tilik-api`, then restart the previous
 capture/API commands with their original stores.
+
+## Optional boot hotspot and USB switch
+
+See [deploy/HOTSPOT.md](deploy/HOTSPOT.md) to start `Tilik-Drone-Payload` at boot and toggle Wi-Fi on each nonthermal USB insertion. Install locally on the Pi; no automatic network changes are performed by Git updates.

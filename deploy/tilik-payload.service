@@ -1,0 +1,22 @@
+[Unit]
+Description=Tilik boot hotspot and USB Wi-Fi toggle
+Requires=NetworkManager.service
+After=NetworkManager.service systemd-udev-settle.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/tilik-network/wifi_usb.py
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=tilik-payload
+RuntimeDirectoryPreserve=yes
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/tilik-payload
+
+[Install]
+WantedBy=multi-user.target
