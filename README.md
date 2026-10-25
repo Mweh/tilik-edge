@@ -214,3 +214,41 @@ capture/API commands with their original stores.
 ## Optional boot hotspot and USB switch
 
 See [deploy/HOTSPOT.md](deploy/HOTSPOT.md) to start `Tilik-Drone-Payload` at boot and toggle Wi-Fi on each nonthermal USB insertion. Install locally on the Pi; no automatic network changes are performed by Git updates.
+
+## API autostart and network changes
+
+On an existing Pi checkout, preserve the current capture directory and device ID:
+
+```sh
+cd ~/tilik-edge
+sudo python3 deploy/install-autostart.py
+# Stop the old start.sh process first, then:
+sudo systemctl restart tilik-api
+sudo systemctl status tilik-api --no-pager
+```
+
+Add `--capture` to install/enable an independent camera service too; then restart
+both `tilik-api tilik-capture` after stopping the old combined process. The source
+configuration is `config/pi.local.json`, falling back to `config/edge.json`, or an
+explicit `--config /path/to/existing.json`. A root-owned runtime copy is written
+to `/etc/tilik-runtime.json`; edits to the source config require rerunning this
+installer. Capture files and device ID stay in the original data directory.
+The runtime user defaults to the sudo caller; use `--user pi` when installing as
+root. Runtime API tokens can be supplied in `/etc/tilik-edge.env` (root-only).
+
+The API starts at boot even without Wi-Fi and listens on `0.0.0.0`. It stays alive
+when Wi-Fi is disabled, when changing router SSIDs, and when entering hotspot
+mode. It is reachable over any connected IPv4 interface, not restricted to a
+particular SSID. No NetworkManager dispatcher restart is needed. Capture remains
+independent from connectivity. systemd restarts the API if the process fails.
+
+While a network is down, clients cannot reach the Pi and in-progress HTTP requests
+can fail. After reconnection, iPhone/Mac must be on the same reachable network.
+Use Bonjour discovery or `http://raspberrypi.local:8080` rather than a saved IP.
+The iOS Retry action rediscovers the endpoint and resumes by skipping valid local
+bundles. The API process surviving does not make an interrupted HTTP request
+survive. Bonjour uses `--no-fail` to reconnect if Avahi itself restarts. Install
+`avahi-daemon avahi-utils` for discovery; hostname alone depends on mDNS support.
+
+Do not run `sh start.sh` alongside these services: it starts a second API/camera.
+Check logs with `sudo journalctl -u tilik-api -b -n 60 --no-pager`.

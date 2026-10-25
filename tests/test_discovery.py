@@ -15,6 +15,7 @@ class DiscoveryTests(unittest.TestCase):
             self.assertIs(result, process)
             command = spawn.call_args.args[0]
             self.assertIn('_tilik-edge._tcp', command)
+            self.assertIn('--no-fail', command)
             self.assertIn('8766', command)
             self.assertNotIn('private-secret', str(command))
 

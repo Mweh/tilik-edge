@@ -19,7 +19,7 @@ def advertise(settings, port):
         return None
     scheme = 'https' if settings.get('tls_cert') else 'http'
     try:
-        return subprocess.Popen([program, 'Tilik Thermal ' + settings['device_id'][:8],
+        return subprocess.Popen([program, '--no-fail', 'Tilik Thermal ' + settings['device_id'][:8],
             '_tilik-edge._tcp', str(port), 'api_version=2', 'scheme=' + scheme,
             'device_id=' + settings['device_id']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as error:
