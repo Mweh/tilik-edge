@@ -2,6 +2,8 @@
 
 # Tilik Edge — thermal capture + iOS sync
 
+For a newly flashed Pi, follow [Fresh Pi setup](deploy/FRESH_PI.md).
+
 One project, two processes, one shared capture store. The capture worker owns the
 USB camera and evaluates rules continuously. The API serves committed bundles,
 shows the live preview, and accepts rule changes. Closing the browser does not
