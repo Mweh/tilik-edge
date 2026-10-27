@@ -68,3 +68,37 @@ class RulesTest(unittest.TestCase):
         e=self.engine
         self.assertEqual(e.process_frame(self.frame(temp=55),clock=0)['hotspot_count'],1)
         self.assertEqual(e.process_frame(self.frame(temp=54.99),clock=.1)['hotspot_count'],0)
+
+    def combined(self, *xs):
+        raw = self.frame(temp=30)
+        for x in xs:
+            for y in range(10, 13):
+                for xx in range(x, x+3):
+                    raw[y*160+xx] = celsius_to_centikelvin(70)
+        return raw
+
+    def test_new_cluster_not_saved_as_persistent(self):
+        e = self.engine
+        e.process_frame(self.combined(10), clock=0)
+        e.process_frame(self.combined(10), clock=.5)
+        result = e.process_frame(self.combined(10, 40), clock=1)
+        self.assertEqual(result['action_taken'], 'AUTO_CAPTURED')
+        metadata = json.loads((Path(result['capture_path'])/'metadata.json').read_text())
+        self.assertEqual(metadata['hotspot_count'], 1)
+        self.assertEqual(metadata['hotspots'][0]['bounding_box_pixels']['x'], 10)
+
+    def test_parallel_cluster_keeps_own_start_when_first_disappears(self):
+        e = self.engine
+        e.persistence_seconds = 2
+        e.process_frame(self.combined(10), clock=0)
+        e.process_frame(self.combined(10, 40), clock=.5)
+        e.process_frame(self.combined(40), clock=1)
+        e.process_frame(self.combined(40), clock=2)
+        self.assertEqual(e.process_frame(self.combined(40), clock=2.5)['action_taken'], 'AUTO_CAPTURED')
+
+    def test_statistics_scaling(self):
+        threshold, median, mad = self.engine.compute_dynamic_threshold([30, 32, 34, 36, 80])
+        self.assertEqual((median, mad), (34, 2))
+        self.assertEqual(threshold, 55)
+        threshold, median, mad = self.engine.compute_dynamic_threshold([30, 35, 40, 45, 50])
+        self.assertAlmostEqual(threshold, 40 + 3.5 * 1.4826 * 5)

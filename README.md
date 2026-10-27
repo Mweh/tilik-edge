@@ -3,6 +3,7 @@
 # Tilik Edge — thermal capture + iOS sync
 
 For a newly flashed Pi, follow [Fresh Pi setup](deploy/FRESH_PI.md).
+Read the [landfill rule audit and QA guide](docs/THERMAL_RULES.md) before tuning field thresholds.
 
 One project, two processes, one shared capture store. The capture worker owns the
 USB camera and evaluates rules continuously. The API serves committed bundles,

@@ -497,6 +497,7 @@ class RadiometricAutoCaptureEngine:
         self.source = source
         self.first_seen = None
         self.previous_boxes = []
+        self.persistence_tracks = []
         self.mode = mode
         self.custom_threshold = custom_threshold
         self.min_cluster_pixels = min_cluster_pixels
@@ -515,6 +516,7 @@ class RadiometricAutoCaptureEngine:
         self.consecutive_exceed_count = 0
         self.first_seen = None
         self.previous_boxes = []
+        self.persistence_tracks = []
         if self.state != CaptureState.COOLDOWN:
             self.state = CaptureState.IDLE
 
@@ -537,7 +539,7 @@ class RadiometricAutoCaptureEngine:
             active_thresh = DEFAULT_BENCH_BODY_THRESHOLD_CELSIUS
         elif self.mode == TriggerMode.LANDFILL_PROD:
             # ------------------------------------------------------------------
-            # Site-calibrated landfill screening heuristic
+            # Site-configurable landfill screening heuristic (field validation pending)
             # T_thresh = max(absolute floor, background + delta, background + k * 1.4826 * MAD)
             # ------------------------------------------------------------------
             statistical_thresh = bg_median + (self.mad_multiplier * NORMAL_CONSISTENCY_FACTOR * mad)
@@ -570,6 +572,7 @@ class RadiometricAutoCaptureEngine:
             self.consecutive_exceed_count = 0
             self.first_seen = None
             self.previous_boxes = []
+            self.persistence_tracks = []
             if self.state != CaptureState.COOLDOWN:
                 self.state = CaptureState.IDLE
             raise ValueError("Expected 19,200 valid Y16 centi-Kelvin pixels; invalid/saturated frame rejected")
@@ -609,22 +612,46 @@ class RadiometricAutoCaptureEngine:
 
         elif self.state in (CaptureState.IDLE, CaptureState.DEBOUNCING):
             if has_valid_hotspot:
-                boxes = [h.bounding_box for h in hotspots]
-                def overlaps(a, b):
-                    return a[0] < b[0]+b[2] and b[0] < a[0]+a[2] and a[1] < b[1]+b[3] and b[1] < a[1]+a[3]
-                matched = [b for b in boxes if any(overlaps(b, old) for old in self.previous_boxes)]
-                if not matched:
-                    self.consecutive_exceed_count = 0
-                    self.first_seen = now
-                self.previous_boxes = matched or boxes
-                self.consecutive_exceed_count += 1
-                if self.consecutive_exceed_count >= self.debounce_frames and now - self.first_seen >= self.persistence_seconds:
+                # A new cluster must not inherit another cluster's duration.
+                # Greedy one-to-one IoU matching is image-space association, not
+                # ground tracking: fast drone motion still needs field validation.
+                candidates = []
+                for index, hotspot in enumerate(hotspots):
+                    a = hotspot.bounding_box
+                    for old_index, track in enumerate(self.persistence_tracks):
+                        b = track['box']
+                        width = max(0, min(a[0]+a[2], b[0]+b[2])-max(a[0], b[0]))
+                        height = max(0, min(a[1]+a[3], b[1]+b[3])-max(a[1], b[1]))
+                        intersection = width * height
+                        if intersection:
+                            iou = intersection / (a[2]*a[3]+b[2]*b[3]-intersection)
+                            candidates.append((iou, index, old_index))
+                assignments, used = {}, set()
+                for _, index, old_index in sorted(candidates, reverse=True):
+                    if index not in assignments and old_index not in used:
+                        assignments[index] = self.persistence_tracks[old_index]
+                        used.add(old_index)
+                tracks, mature = [], []
+                for index, hotspot in enumerate(hotspots):
+                    old = assignments.get(index)
+                    track = {'box': hotspot.bounding_box,
+                             'first': old['first'] if old else now,
+                             'count': old['count']+1 if old else 1}
+                    tracks.append(track)
+                    if track['count'] >= self.debounce_frames and now-track['first'] >= self.persistence_seconds:
+                        mature.append(hotspot)
+                self.persistence_tracks = tracks
+                longest = max(tracks, key=lambda track: (now-track['first'], track['count']))
+                self.first_seen = longest['first']
+                self.consecutive_exceed_count = longest['count']
+                self.previous_boxes = [track['box'] for track in tracks]
+                if mature:
                     # TRIGGER CONDITION MET!
                     action_taken = "AUTO_CAPTURED"
                     capture_path = self._save_capture_bundle(
                         raw_uint16=raw_uint16,
                         celsius_frame=celsius_frame,
-                        hotspots=hotspots,
+                        hotspots=mature,
                         threshold_celsius=threshold_celsius,
                         bg_median=bg_median,
                         mad=mad,
@@ -644,6 +671,7 @@ class RadiometricAutoCaptureEngine:
                 self.state = CaptureState.IDLE
                 self.first_seen = None
                 self.previous_boxes = []
+                self.persistence_tracks = []
 
         return {
             "state": self.state,
@@ -721,6 +749,8 @@ class RadiometricAutoCaptureEngine:
             "trigger_kind": trigger_kind,
             "request_id": request_id,
             "rule_basis": "Surface anomaly screening; site validation required; not fire confirmation",
+            "rule_version": "surface-mad-v2-per-cluster",
+            "persistence_basis": "per-cluster image-space IoU; not geographic tracking",
             "source": self.source,
             "rule_config": {"absolute_celsius": self.custom_threshold if self.custom_threshold is not None else (55.0 if self.mode == TriggerMode.LANDFILL_PROD else 36.0), "delta_celsius": self.delta_celsius,
                 "mad_multiplier": self.mad_multiplier, "min_cluster_pixels": self.min_cluster_pixels, "max_cluster_pixels": self.max_cluster_pixels,
