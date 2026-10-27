@@ -5,7 +5,8 @@ import unittest
 import uuid
 from pathlib import Path
 from edge.commands import Commands
-from hotspot.camera import LatestCamera
+from hotspot.camera import LatestCamera, command
+from unittest.mock import patch
 
 
 class CommandsTest(unittest.TestCase):
@@ -46,3 +47,24 @@ class CommandsTest(unittest.TestCase):
             self.assertGreater(camera.dropped,0)
         finally:camera.close()
         self.assertFalse(camera.thread.is_alive())
+
+
+class CameraCommandTests(unittest.TestCase):
+    def test_missing_ffmpeg_uses_raw_v4l2(self):
+        with patch('hotspot.camera.sys.platform', 'linux'), patch('hotspot.camera.shutil.which', side_effect=lambda name: '/usr/bin/v4l2-ctl' if name == 'v4l2-ctl' else None):
+            args = command('/dev/video0')
+        self.assertEqual(args[0], 'v4l2-ctl')
+        self.assertIn('--set-fmt-video=width=160,height=120,pixelformat=Y16 ', args)
+        self.assertIn('--stream-to=-', args)
+        self.assertNotIn('--stream-to-hdr', args)
+
+    def test_ffmpeg_remains_preferred(self):
+        with patch('hotspot.camera.sys.platform', 'linux'), patch('hotspot.camera.shutil.which', return_value='/usr/bin/ffmpeg'):
+            args = command('/dev/video0')
+        self.assertEqual(args[0], 'ffmpeg')
+        self.assertEqual(args[args.index('-c:v')+1], 'copy')
+
+    def test_no_capture_tools_has_actionable_error(self):
+        with patch('hotspot.camera.sys.platform', 'linux'), patch('hotspot.camera.shutil.which', return_value=None):
+            with self.assertRaisesRegex(RuntimeError, 'ffmpeg or v4l2-ctl'):
+                command('/dev/video0')

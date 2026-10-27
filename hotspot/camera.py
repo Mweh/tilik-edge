@@ -1,4 +1,4 @@
-"""Linux USB UVC Y16 acquisition through FFmpeg's V4L2 input.
+"""Linux USB UVC Y16 acquisition through FFmpeg or v4l2-ctl.
 
 No pixel-format conversion: stream-copy the explicitly requested gray16le input.
 No shell interpolation; stderr remains visible in the service journal.
@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 import select
+import shutil
 import struct
 import subprocess
 import time
@@ -18,6 +19,14 @@ from .engine import RAW_FRAME_BYTES
 def command(device):
     if sys.platform != 'linux':
         raise RuntimeError('Live capture is supported on Raspberry Pi/Linux only. Use simulation on Mac.')
+    if not shutil.which('ffmpeg'):
+        if shutil.which('v4l2-ctl'):
+            # FourCC includes a trailing space. stdout is binary frames only;
+            # --stream-to=- automatically enables silent mode in v4l2-ctl.
+            return ['v4l2-ctl', '--device', device,
+                    '--set-fmt-video=width=160,height=120,pixelformat=Y16 ',
+                    '--stream-mmap=3', '--stream-poll', '--stream-to=-']
+        raise RuntimeError('Live capture needs ffmpeg or v4l2-ctl. Install ffmpeg and v4l-utils on the Pi.')
     return ['ffmpeg' , '-nostdin', '-hide_banner', '-loglevel', 'warning',
             '-f', 'v4l2', '-input_format', 'gray16le', '-video_size', '160x120',
             '-i', device, '-map', '0:v:0', '-c:v', 'copy', '-f', 'rawvideo', 'pipe:1']
