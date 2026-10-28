@@ -12,6 +12,7 @@ from hotspot.__main__ import FIELDS, atomic_json
 from hotspot.engine import RadiometricAutoCaptureEngine
 from .storage import Catalog, digest
 from .commands import Commands
+from .sessions import Sessions
 from .discovery import advertise
 
 
@@ -52,14 +53,17 @@ def make_server(settings):
         server.socket = context.wrap_socket(server.socket, server_side=True)
     server.settings, server.catalog = settings, catalog
     server.commands = Commands(settings['data_dir'])
+    server.sessions = Sessions(settings['data_dir'], settings['device_id'])
     server.token = os.environ.get('TILIK_API_TOKEN', '')
     server.rules_lock = threading.Lock()
+    server.catalog_refresh_lock = threading.Lock()
     server.timeout = .5
     server.stopping = threading.Event()
     def scan():
         while not server.stopping.wait(2):
             try:
-                catalog.refresh()
+                with server.catalog_refresh_lock:
+                    catalog.refresh()
             except Exception as error:
                 catalog.errors = [str(error)]
     server.scanner = threading.Thread(target=scan, daemon=True)
@@ -102,7 +106,30 @@ class Handler(BaseHTTPRequestHandler):
         path = path.replace('/api/v1/', '/api/', 1)
         settings, catalog = self.server.settings, self.server.catalog
         try:
-            if path.startswith('/api/requests/'):
+            if path.startswith('/api/session/'):
+                session_id = path.split('/')[-1]
+                persisted = self.server.sessions.inventory(session_id)
+                if persisted is not None:
+                    self.send(persisted)
+                    return
+                receipt = self.server.sessions.receipt(session_id)
+                status_path = settings['data_dir'] / 'captures' / settings['source'] / 'status.json'
+                status = json.loads(status_path.read_text()) if status_path.exists() else {}
+                end = receipt['finalized_monotonic_seconds']
+                complete = (end is not None and status.get('boot_id') == receipt['boot_id']
+                            and status.get('processed_monotonic_seconds', -1) > end)
+                with self.server.catalog_refresh_lock:
+                    catalog.refresh()
+                ids, cursor = [], 0
+                snapshot = catalog.list(limit=1)['snapshot']
+                while cursor < snapshot:
+                    page = catalog.list(cursor, 200, snapshot)
+                    ids.extend(item['id'] for item in page['items'] if item.get('session_id') == receipt['session_id'])
+                    cursor = page['next_cursor']
+                inventory = dict(sessionID=receipt['session_id'], deviceID=receipt['device_id'],
+                                 captureIDs=ids, isFinalized=complete and not catalog.errors)
+                self.send(self.server.sessions.save_inventory(inventory) if inventory['isFinalized'] else inventory)
+            elif path.startswith('/api/requests/'):
                 receipt = self.server.commands.get(path.split('/')[-1])
                 if receipt['state'] == 'saved':
                     try:
@@ -133,7 +160,7 @@ class Handler(BaseHTTPRequestHandler):
                 fresh = time.time() - status.get('updated_at', 0) < 5
                 connected = (settings['source'] == 'live' and fresh and status.get('state') not in ('ERROR', 'STOPPED'))
                 self.send({'server': 'Tilik Edge', 'version': 2, 'device_id': settings['device_id'],
-                    'source': settings['source'], 'camera': {'connected': connected if fresh else None},
+                    'source': settings['source'], 'session_binding_version': 1, 'boot_id': self.server.sessions.boot, 'camera': {'connected': connected if fresh else None},
                     'capture': status, 'fresh': fresh, 'catalog_errors': catalog.errors,
                     'controls': {'token_required': bool(self.server.token),
                                  'allowed': bool(self.server.token) or self.client_address[0] in ('127.0.0.1', '::1')}})
@@ -177,6 +204,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send({'error': str(error)}, 409)
 
     def do_POST(self):
+        received_monotonic = time.monotonic()
         if not self.authorized():
             return
         # Without a configured token, control is local-only. No CORS bypass.
@@ -188,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin != scheme + self.headers.get('Host', ''):
             self.send({'error': 'Origin rejected'}, 403)
             return
-        if self.path not in ('/api/rules', '/api/v1/rules', '/api/capture', '/api/v1/capture'):
+        if self.path not in ('/api/rules', '/api/v1/rules', '/api/capture', '/api/v1/capture', '/api/v1/clock', '/api/v1/session/bind', '/api/v1/session/finalize'):
             self.send({'error': 'Use the capture service to generate captures'}, 405)
             return
         try:
@@ -196,6 +224,18 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= 8192:
                 raise ValueError('Invalid request size')
             config = json.loads(self.rfile.read(size))
+            if self.path == '/api/v1/clock':
+                self.send(dict(device_id=self.server.settings['device_id'],
+                               boot_id=self.server.sessions.boot,
+                               receive_monotonic_seconds=received_monotonic,
+                               send_monotonic_seconds=time.monotonic()))
+                return
+            if self.path == '/api/v1/session/bind':
+                self.send(self.server.sessions.bind(config))
+                return
+            if self.path == '/api/v1/session/finalize':
+                self.send(self.server.sessions.finalize(config))
+                return
             if self.path in ('/api/capture', '/api/v1/capture'):
                 if not isinstance(config, dict):
                     raise ValueError('Request must be a JSON object')

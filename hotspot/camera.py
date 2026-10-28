@@ -115,7 +115,7 @@ class LatestCamera:
                 raw = self.camera.read()
                 with self.condition:
                     self.sequence += 1
-                    self.latest = (raw, time.monotonic())
+                    self.latest = (raw, time.monotonic(), time.time())
                     self.condition.notify_all()
         except Exception as error:
             with self.condition:
@@ -129,12 +129,13 @@ class LatestCamera:
                 raise self.error
             if not ready or self.stopping:
                 raise TimeoutError('No fresh camera frame')
-            raw, received = self.latest
+            raw, received, received_utc = self.latest
             if time.monotonic() - received > 2:
                 raise TimeoutError('Camera frame is stale')
             self.dropped += max(0, self.sequence-self.consumed-1)
             self.consumed = self.sequence
             self.received_at = received
+            self.received_utc = received_utc
             return raw
 
     def close(self):
