@@ -551,7 +551,8 @@ class RadiometricAutoCaptureEngine:
         self,
         raw_uint16: List[int],
         timestamp: Optional[float] = None,
-        clock: Optional[float] = None
+        clock: Optional[float] = None,
+        frame_timing: Optional[dict] = None
     ) -> Dict[str, Any]:
         """
         Processes one 16-bit radiometric frame:
@@ -630,7 +631,7 @@ class RadiometricAutoCaptureEngine:
                         mad=mad,
                         t_min=t_min,
                         t_max=t_max,
-                        timestamp=wall_time
+                        timestamp=wall_time, frame_timing=frame_timing
                     )
                     self.trigger_threshold = threshold_celsius
                     self.last_capture_time = now
@@ -674,7 +675,8 @@ class RadiometricAutoCaptureEngine:
         t_max: float,
         timestamp: float,
         trigger_kind: str = "rule",
-        request_id: Optional[str] = None
+        request_id: Optional[str] = None,
+        frame_timing: Optional[dict] = None
     ) -> str:
         """
         Persists atomic bundle: .bin (raw radiometric), .png (annotated visual), .json (metadata).
@@ -742,6 +744,9 @@ class RadiometricAutoCaptureEngine:
                 "format": "Y16 (centi-Kelvin)"
             }
         }
+        if frame_timing is not None:
+            metadata['frame_timing'] = frame_timing
+            metadata['session_id'] = frame_timing.get('session_id')
         with open(json_path, "w") as f:
             json.dump(metadata, f, indent=2)
 

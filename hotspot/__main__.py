@@ -14,6 +14,7 @@ import time
 from .engine import RadiometricAutoCaptureEngine, celsius_to_centikelvin, render_annotated_thermal_image
 from .camera import LatestCamera as Camera
 from edge.commands import Commands
+from edge.sessions import Sessions
 from edge.storage import digest
 
 LOG = logging.getLogger('hotspot')
@@ -70,6 +71,7 @@ def run(args):
     index = 0
     last_event = {}
     commands = Commands(output.parent.parent)
+    sessions = Sessions(output.parent.parent, engine.device_id)
     preview_path = output / 'preview.png'
     last_preview = 0.0
     last_preview_at = None
@@ -96,11 +98,14 @@ def run(args):
             if shutil.disk_usage(output).free < args.min_free_mb * 1024 * 1024:
                 raise OSError('Insufficient free disk space; captures retained, service stopping')
             raw = camera.read() if camera else synthetic_frame(index)
+            received = camera.received_at if camera else time.monotonic()
+            received_utc = camera.received_utc if camera else time.time()
+            timing = sessions.frame_timing(received, camera.consumed if camera else index, not bool(camera))
             if camera and time.monotonic() < warmup_until:
                 atomic_json(output / 'status.json', {'state': 'WARMUP', 'updated_at': time.time()})
                 continue
             try:
-                result = engine.process_frame(raw)
+                result = engine.process_frame(raw, timestamp=received_utc, clock=received, frame_timing=timing)
             except ValueError as error:
                 engine.reset_persistence()
                 LOG.warning('Invalid frame rejected: %s', error)
@@ -113,8 +118,8 @@ def run(args):
                     manual_pixels = [v / 100 - 273.15 for v in raw]
                     saved = engine._save_capture_bundle(raw, manual_pixels, result['hotspots'],
                         result['threshold_celsius'], result['bg_median_celsius'], result['mad_celsius'],
-                        result['min_celsius'], result['max_celsius'], time.time(),
-                        trigger_kind='manual_test', request_id=request_id)
+                        result['min_celsius'], result['max_celsius'], received_utc,
+                        trigger_kind='manual_test', request_id=request_id, frame_timing=timing)
                     engine.total_captures += 1
                     metadata = json.loads((Path(saved) / 'metadata.json').read_text())
                     cid = digest(((engine.device_id or '') + ':' + metadata['event_id']).encode())
@@ -135,6 +140,7 @@ def run(args):
                 last_event = dict(last_capture_path=result['capture_path'], last_capture_kind='rule')
             status.update(last_event)
             status.update(updated_at=time.time(), source=args.source, frames_processed=index + 1,
+                          boot_id=sessions.boot, processed_monotonic_seconds=received,
                           captures=engine.total_captures, rule_config=config,
                           preview_updated_at=last_preview_at,
                           processing_ms=round((time.monotonic()-started)*1000, 1),

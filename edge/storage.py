@@ -125,6 +125,7 @@ class Catalog:
                 source = meta.get('source', 'unknown')
                 mock = True if source in ('simulation', 'replay') else False if source == 'live' else None
                 manifest = {'id': cid, 'device_id': device, 'event_id': event,
+                    'session_id': meta.get('session_id'),
                     'timestamp': meta.get('timestamp_iso', ''), 'epoch': meta.get('unix_timestamp'),
                     'max_temp_c': meta.get('background_stats', {}).get('max_celsius'),
                     'mock': mock, 'source': source, 'trigger_mode': meta.get('trigger_mode', 'unspecified'),
