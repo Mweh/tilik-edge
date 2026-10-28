@@ -70,8 +70,8 @@ def main():
         source = root / 'config/edge.json'
     if not shutil.which('systemctl'):
         raise SystemExit('systemd is required.')
-    if args.capture and not shutil.which('ffmpeg'):
-        raise SystemExit('Install ffmpeg before enabling capture.')
+    if args.capture and not (shutil.which('ffmpeg') or shutil.which('v4l2-ctl')):
+        raise SystemExit('Install ffmpeg or v4l-utils before enabling capture.')
     account = pwd.getpwnam(args.user)
     if account.pw_uid == 0:
         raise SystemExit('Choose a non-root runtime user using --user.')
