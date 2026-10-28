@@ -29,7 +29,7 @@ Type=simple
 User={username}
 Group={group}
 SupplementaryGroups=video
-WorkingDirectory={quote(root)}
+WorkingDirectory={str(root).replace('%', '%%')}
 Environment=PYTHONDONTWRITEBYTECODE=1
 EnvironmentFile=-/etc/tilik-edge.env
 ExecStart=/usr/bin/python3 -m edge {component} --config {quote(config)}

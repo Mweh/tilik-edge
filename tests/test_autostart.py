@@ -28,6 +28,8 @@ class AutostartTests(unittest.TestCase):
         self.assertIn('Restart=always', service)
         self.assertIn('WantedBy=multi-user.target', service)
         self.assertIn('edge 100%%', service)
+        self.assertIn('WorkingDirectory=/home/pi/edge 100%%\n', service)
+        self.assertNotIn('WorkingDirectory="', service)
         self.assertNotIn('BindsTo=', service)
         self.assertNotIn('Requires=NetworkManager', service)
         self.assertNotIn('network-online.target', service)
