@@ -17,3 +17,8 @@ captures/
 .runtime-*
 .git-bootstrap-backup.*
 .tilik-runtime-update.tar.gz
+
+# Local reviewed deployment staging and rollback snapshots
+.hotplug-update/
+.hotplug-backup.*/
+config/*.local.json.backup-*

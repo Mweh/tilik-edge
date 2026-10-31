@@ -22,7 +22,7 @@ fi
 if [ -n "$DEVICE" ] && [ "$CONFIRMED" != true ]; then
     echo 'First verify TLinear 0.01 K, AGC off, telemetry off; then add --confirm-centikelvin.'; exit 2
 fi
-if [ -n "$DEVICE" ] && [ ! -c "$DEVICE" ]; then
+if [ -n "$DEVICE" ] && [ "$DEVICE" != auto ] && [ ! -c "$DEVICE" ]; then
     echo "Camera device not found: $DEVICE"; exit 2
 fi
 apt-get update

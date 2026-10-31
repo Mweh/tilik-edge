@@ -254,3 +254,7 @@ survive. Bonjour uses `--no-fail` to reconnect if Avahi itself restarts. Install
 
 Do not run `sh start.sh` alongside these services: it starts a second API/camera.
 Check logs with `sudo journalctl -u tilik-api -b -n 60 --no-pager`.
+
+## Automatic camera recovery
+
+See [Camera lifecycle and deployment](docs/CAMERA_LIFECYCLE.md): API stays available for iOS downloads; live capture waits for verified PureThermal USB, reconnects and warms up automatically without a Mac.

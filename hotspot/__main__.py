@@ -12,7 +12,7 @@ import struct
 import sys
 import time
 from .engine import RadiometricAutoCaptureEngine, celsius_to_centikelvin, render_annotated_thermal_image
-from .camera import LatestCamera as Camera
+from .live import LiveCamera
 from edge.commands import Commands
 from edge.sessions import Sessions
 from edge.storage import digest
@@ -76,10 +76,11 @@ def run(args):
     last_preview = 0.0
     last_preview_at = None
     last_processing_ms = 0.0
-    warmup_until = time.monotonic() + (args.warmup_seconds if args.source == 'live' else 0)
+    last_waiting_status = None
+    last_waiting_at = 0.0
     try:
         if args.source == 'live':
-            camera = Camera(args.device)
+            camera = LiveCamera(args.device, args.warmup_seconds)
         while not stopped and (args.frames == 0 or index < args.frames):
             started = time.monotonic()
             stamp = Path(args.config).stat().st_mtime_ns
@@ -98,12 +99,25 @@ def run(args):
             if shutil.disk_usage(output).free < args.min_free_mb * 1024 * 1024:
                 raise OSError('Insufficient free disk space; captures retained, service stopping')
             raw = camera.read() if camera else synthetic_frame(index)
+            if camera and raw is None:
+                engine.reset_persistence()
+                last_preview_at = None
+                status = dict(last_event, state=camera.state, source=args.source,
+                              updated_at=time.time(), captures=engine.total_captures,
+                              boot_id=sessions.boot, rule_config=config,
+                              preview_updated_at=None, camera_device=camera.selected_device)
+                if camera.error:
+                    status['error'] = camera.error
+                waiting_key = (camera.state, camera.error, camera.selected_device)
+                if waiting_key != last_waiting_status or started - last_waiting_at >= 1:
+                    atomic_json(output / 'status.json', status)
+                    last_waiting_status, last_waiting_at = waiting_key, started
+                time.sleep(.25)
+                continue
+            last_waiting_status = None
             received = camera.received_at if camera else time.monotonic()
             received_utc = camera.received_utc if camera else time.time()
             timing = sessions.frame_timing(received, camera.consumed if camera else index, not bool(camera))
-            if camera and time.monotonic() < warmup_until:
-                atomic_json(output / 'status.json', {'state': 'WARMUP', 'updated_at': time.time()})
-                continue
             try:
                 result = engine.process_frame(raw, timestamp=received_utc, clock=received, frame_timing=timing)
             except ValueError as error:
@@ -169,7 +183,7 @@ def run(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source', choices=['simulation', 'live'], default='simulation')
-    p.add_argument('--device', default='/dev/video0', help='Prefer /dev/v4l/by-id/... stable device path')
+    p.add_argument('--device', default='/dev/video0', help='auto finds PureThermal; or use a stable /dev/v4l/by-id/...-video-index0 path')
     p.add_argument('--config', default='config/landfill.json')
     p.add_argument('--output', default='captures')
     p.add_argument('--frames', type=int, default=0, help='0 runs until stopped')

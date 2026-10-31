@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 from hotspot.__main__ import FIELDS, atomic_json
 from hotspot.engine import RadiometricAutoCaptureEngine
+from hotspot.live import READY_STATES
 from .storage import Catalog, digest
 from .commands import Commands
 from .sessions import Sessions
@@ -140,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/preview':
                 status_path = settings['data_dir'] / 'captures' / settings['source'] / 'status.json'
                 status = json.loads(status_path.read_text()) if status_path.exists() else {}
-                if time.time() - status.get('updated_at', 0) > 2 or status.get('state') in ('STOPPED', 'ERROR', 'WARMUP', 'INVALID_FRAME'):
+                if time.time() - status.get('updated_at', 0) > 2 or status.get('state') not in READY_STATES:
                     self.send({'error': 'No fresh preview. Check capture service status.'}, 503)
                     return
                 image_path = status_path.with_name('preview.png')
@@ -158,9 +159,10 @@ class Handler(BaseHTTPRequestHandler):
                 status_path = settings['data_dir'] / 'captures' / settings['source'] / 'status.json'
                 status = json.loads(status_path.read_text()) if status_path.exists() else {}
                 fresh = time.time() - status.get('updated_at', 0) < 5
-                connected = (settings['source'] == 'live' and fresh and status.get('state') not in ('ERROR', 'STOPPED'))
+                connected = (settings['source'] == 'live' and fresh and status.get('state') in READY_STATES | {'WARMUP'})
                 self.send({'server': 'Tilik Edge', 'version': 2, 'device_id': settings['device_id'],
-                    'source': settings['source'], 'session_binding_version': 1, 'boot_id': self.server.sessions.boot, 'camera': {'connected': connected if fresh else None},
+                    'source': settings['source'], 'session_binding_version': 1, 'boot_id': self.server.sessions.boot, 'camera': {'connected': connected if fresh else None,
+                        'ready': fresh and status.get('state') in READY_STATES},
                     'capture': status, 'fresh': fresh, 'catalog_errors': catalog.errors,
                     'controls': {'token_required': bool(self.server.token),
                                  'allowed': bool(self.server.token) or self.client_address[0] in ('127.0.0.1', '::1')}})
@@ -255,8 +257,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Capture source changed. Reconnect before requesting a capture.')
                 status_path = settings['data_dir'] / 'captures' / source / 'status.json'
                 status = json.loads(status_path.read_text()) if status_path.exists() else {}
-                if time.time() - status.get('updated_at', 0) > 2 or status.get('state') in (None, 'ERROR', 'STOPPED', 'WARMUP', 'INVALID_FRAME'):
-                    self.send({'error': 'Capture worker is not ready. Start it and wait for warmup.'}, 503)
+                if time.time() - status.get('updated_at', 0) > 2 or status.get('state') not in READY_STATES:
+                    self.send({'error': 'Camera is not ready. Connect PureThermal and wait for automatic warmup. Saved captures remain downloadable.'}, 503)
                     return
                 receipt = self.server.commands.submit(request_id, source)
                 self.send(receipt, 202)

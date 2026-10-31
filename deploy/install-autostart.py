@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import subprocess
 import time
@@ -35,6 +36,8 @@ EnvironmentFile=-/etc/tilik-edge.env
 ExecStart=/usr/bin/python3 -m edge {component} --config {quote(config)}
 Restart=always
 RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
@@ -53,6 +56,10 @@ def configuration(source):
         if values.get(key):
             values[key] = str((source.parent / values[key]).resolve())
     values['host'] = '0.0.0.0'
+    # Generic node numbers can change after USB replug. Keep explicitly pinned
+    # by-id paths, but migrate an unpinned live node to verified USB discovery.
+    if values.get('source') == 'live' and re.fullmatch(r'/dev/video[0-9]+', values.get('device', '')):
+        values['device'] = 'auto'
     return values
 
 
@@ -98,6 +105,8 @@ def main():
     print('Enabled for boot:', ', '.join(services))
     print('Existing data store:', data)
     print('API binds 0.0.0.0; network changes do not require an API restart.')
+    print('Camera unplug does not stop API/downloads. Live capture waits and reconnects automatically.')
+    print('Camera source:', values['source'], '| device:', values.get('device'))
     print('Stop any old start.sh process before starting services to avoid port/camera conflicts.')
     print('Then run: sudo systemctl restart ' + ' '.join(services))
 
