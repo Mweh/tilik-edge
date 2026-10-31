@@ -95,6 +95,12 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def control_allowed(self, capture=False):
+        # Token authentication is enforced by authorized() before this policy.
+        return (bool(self.server.token)
+                or self.client_address[0] in ('127.0.0.1', '::1')
+                or (capture and self.server.settings.get('allow_remote_capture', True)))
+
     def do_GET(self):
         parsed = urlsplit(self.path)
         if parsed.path == '/':
@@ -165,7 +171,8 @@ class Handler(BaseHTTPRequestHandler):
                         'ready': fresh and status.get('state') in READY_STATES},
                     'capture': status, 'fresh': fresh, 'catalog_errors': catalog.errors,
                     'controls': {'token_required': bool(self.server.token),
-                                 'allowed': bool(self.server.token) or self.client_address[0] in ('127.0.0.1', '::1')}})
+                                 'allowed': self.control_allowed(),
+                                 'capture_allowed': self.control_allowed(capture=True)}})
             elif path == '/api/rules':
                 self.send(json.loads(settings['rules'].read_text()))
             elif path == '/api/captures':
@@ -209,9 +216,10 @@ class Handler(BaseHTTPRequestHandler):
         received_monotonic = time.monotonic()
         if not self.authorized():
             return
-        # Without a configured token, control is local-only. No CORS bypass.
-        if not self.server.token and self.client_address[0] not in ('127.0.0.1', '::1'):
-            self.send({'error': 'Rule changes require local access or API token'}, 403)
+        # LAN manual capture is independent of rules/session administration.
+        is_capture = self.path in ('/api/capture', '/api/v1/capture')
+        if not self.control_allowed(capture=is_capture):
+            self.send({'error': 'This control requires local access or API token'}, 403)
             return
         origin = self.headers.get('Origin')
         scheme = 'https://' if self.server.settings.get('tls_cert') else 'http://'

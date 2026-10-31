@@ -17,6 +17,8 @@ def load(path):
         raise ValueError('host must be a non-empty string')
     if settings['source'] not in ('live', 'simulation'):
         raise ValueError('source must be live or simulation')
+    if type(settings.get('allow_remote_capture', True)) is not bool:
+        raise ValueError('allow_remote_capture must be a JSON boolean')
     if bool(settings.get('tls_cert')) != bool(settings.get('tls_key')):
         raise ValueError('Configure both tls_cert and tls_key')
     for key in ('tls_cert', 'tls_key'):

@@ -22,3 +22,7 @@ captures/
 .hotplug-update/
 .hotplug-backup.*/
 config/*.local.json.backup-*
+
+.lan-capture-update/
+
+.lan-capture-backup-*/

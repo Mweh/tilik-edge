@@ -258,3 +258,9 @@ Check logs with `sudo journalctl -u tilik-api -b -n 60 --no-pager`.
 ## Automatic camera recovery
 
 See [Camera lifecycle and deployment](docs/CAMERA_LIFECYCLE.md): API stays available for iOS downloads; live capture waits for verified PureThermal USB, reconnects and warms up automatically without a Mac.
+
+## Manual capture over hotspot or Wi-Fi
+
+Open the dashboard on any reachable Pi IPv4 address, for example `http://10.42.0.1:8080/` on Tilik-Payload or the router-assigned Pi IP. Manual capture is permitted over the network by default; an SSH tunnel is not required for that action. The caller still needs a ready camera; an unplugged/warming-up camera returns503. Configured API tokens remain required.
+
+Without a token, rule changes and clock/session administration remain local-only. The dashboard reports `controls.capture_allowed` separately from `controls.allowed`, which continues to mean privileged rule/control access. Cross-origin browser writes remain rejected. To restore local-only manual capture, set the JSON boolean `"allow_remote_capture": false` in the active runtime config and restart only `tilik-api`. All network participants able to reach an unauthenticated API can request captures when this setting is enabled.
