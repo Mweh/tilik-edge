@@ -11,6 +11,7 @@ from .settings import load
 def main():
     parser = argparse.ArgumentParser(description='Tilik capture + iOS sync')
     parser.add_argument('service', choices=['capture', 'api', 'run'])
+    parser.add_argument('--timed-capture', action='store_true', help='10-minute scheduled capture test')
     parser.add_argument('--config', default='config/edge.json')
     args = parser.parse_args()
     settings = load(args.config)
@@ -20,7 +21,7 @@ def main():
         return run(SimpleNamespace(config=settings['rules'], output=settings['data_dir'] / 'captures',
             source=settings['source'], device=settings['device'], device_id=settings['device_id'],
             confirm_centikelvin=settings['confirm_centikelvin'], warmup_seconds=10,
-            frames=0, min_free_mb=256))
+            frames=0, min_free_mb=256, timed_capture=args.timed_capture))
     if args.service == 'api':
         from .api import serve
         serve(settings)
@@ -41,7 +42,8 @@ def main():
     children = []
     try:
         for name in ('capture', 'api'):
-            children.append(subprocess.Popen([sys.executable, '-m', 'edge', name, '--config', args.config]))
+            children.append(subprocess.Popen([sys.executable, '-m', 'edge', name, '--config', args.config]
+                + (['--timed-capture'] if args.timed_capture and name == 'capture' else [])))
         print(f"Dashboard and iOS API: port {settings['port']}; source={settings['source']}", flush=True)
         while not stopped:
             if children[1].poll() is not None:

@@ -46,6 +46,9 @@ def atomic_json(path, content):
 
 
 def run(args):
+    scheduled = getattr(args, "timed_capture", False)
+    schedule_started = time.monotonic()
+    capture_times = list(range(0, 300, 20)) + [300, 320, 340, 420, 440, 460, 540, 560, 580]
     config = load_config(args.config)
     output = Path(args.output).resolve() / args.source
     engine = RadiometricAutoCaptureEngine(output_dir=str(output), source=args.source, **config)
@@ -83,6 +86,9 @@ def run(args):
             camera = LiveCamera(args.device, args.warmup_seconds)
         while not stopped and (args.frames == 0 or index < args.frames):
             started = time.monotonic()
+            if scheduled and started - schedule_started >= 600:
+                LOG.info("Timed capture completed after 10 minutes")
+                break
             stamp = Path(args.config).stat().st_mtime_ns
             if stamp != config_stamp:
                 try:
@@ -119,13 +125,25 @@ def run(args):
             received_utc = camera.received_utc if camera else time.time()
             timing = sessions.frame_timing(received, camera.consumed if camera else index, not bool(camera))
             try:
-                result = engine.process_frame(raw, timestamp=received_utc, clock=received, frame_timing=timing)
+                result = engine.process_frame(raw, timestamp=received_utc, clock=received, frame_timing=timing, allow_auto_capture=not scheduled)
             except ValueError as error:
                 engine.reset_persistence()
                 LOG.warning('Invalid frame rejected: %s', error)
                 atomic_json(output / 'status.json', {'state': 'INVALID_FRAME', 'error': str(error), 'updated_at': time.time()})
                 index += 1
                 continue
+            if scheduled and capture_times and started - schedule_started >= capture_times[0]:
+                # Missed slots are skipped after camera outages, never replayed in a burst.
+                capture_times = [slot for slot in capture_times if slot > started - schedule_started]
+                pixels = [value / 100 - 273.15 for value in raw]
+                saved = engine._save_capture_bundle(
+                    raw, pixels, result['hotspots'], result['threshold_celsius'],
+                    result['bg_median_celsius'], result['mad_celsius'],
+                    result['min_celsius'], result['max_celsius'], received_utc,
+                    trigger_kind='scheduled_test', frame_timing=timing)
+                engine.total_captures += 1
+                last_event = dict(last_capture_path=saved, last_capture_kind='scheduled_test')
+                LOG.info('SCHEDULED_CAPTURED %s', saved)
             request_id = commands.claim(args.source)
             if request_id:
                 try:
@@ -182,6 +200,7 @@ def run(args):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--timed-capture', action='store_true', help='Capture on the 10-minute QA schedule, then stop')
     p.add_argument('--source', choices=['simulation', 'live'], default='simulation')
     p.add_argument('--device', default='/dev/video0', help='auto finds PureThermal; or use a stable /dev/v4l/by-id/...-video-index0 path')
     p.add_argument('--config', default='config/landfill.json')

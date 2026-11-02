@@ -554,7 +554,8 @@ class RadiometricAutoCaptureEngine:
         raw_uint16: List[int],
         timestamp: Optional[float] = None,
         clock: Optional[float] = None,
-        frame_timing: Optional[dict] = None
+        frame_timing: Optional[dict] = None,
+        allow_auto_capture: bool = True
     ) -> Dict[str, Any]:
         """
         Processes one 16-bit radiometric frame:
@@ -646,7 +647,7 @@ class RadiometricAutoCaptureEngine:
                 self.first_seen = longest['first']
                 self.consecutive_exceed_count = longest['count']
                 self.previous_boxes = [track['box'] for track in tracks]
-                if mature:
+                if mature and allow_auto_capture:
                     # TRIGGER CONDITION MET!
                     action_taken = "AUTO_CAPTURED"
                     capture_path = self._save_capture_bundle(
