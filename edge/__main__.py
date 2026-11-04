@@ -20,7 +20,8 @@ def main():
         return run(SimpleNamespace(config=settings['rules'], output=settings['data_dir'] / 'captures',
             source=settings['source'], device=settings['device'], device_id=settings['device_id'],
             confirm_centikelvin=settings['confirm_centikelvin'], warmup_seconds=10,
-            frames=0, min_free_mb=256))
+            frames=0, min_free_mb=256, gps_device=settings.get("gps_device", "/dev/serial0"),
+            gps_baud=settings.get("gps_baud", 115200)))
     if args.service == 'api':
         from .api import serve
         serve(settings)

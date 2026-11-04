@@ -13,6 +13,7 @@ import sys
 import time
 from .engine import RadiometricAutoCaptureEngine, celsius_to_centikelvin, render_annotated_thermal_image
 from .live import LiveCamera
+from .gps import GPSReader
 from edge.commands import Commands
 from edge.sessions import Sessions
 from edge.storage import digest
@@ -68,6 +69,8 @@ def run(args):
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     camera = None
+    gps = GPSReader(device=getattr(args, "gps_device", "/dev/serial0"),
+                    baud=getattr(args, "gps_baud", 115200)) if args.source == "live" else None
     index = 0
     last_event = {}
     commands = Commands(output.parent.parent)
@@ -88,6 +91,7 @@ def run(args):
                 try:
                     updated = load_config(args.config)
                     replacement = RadiometricAutoCaptureEngine(output_dir=str(output), source=args.source, **updated)
+                    replacement.gps_snapshot = getattr(engine, "gps_snapshot", None)
                     replacement.device_id = getattr(args, 'device_id', None)
                     replacement.total_captures = engine.total_captures
                     replacement.last_capture_time = engine.last_capture_time
@@ -117,6 +121,7 @@ def run(args):
             last_waiting_status = None
             received = camera.received_at if camera else time.monotonic()
             received_utc = camera.received_utc if camera else time.time()
+            engine.gps_snapshot = gps.snapshot(received) if gps else {"valid": False, "reason": "simulation"}
             timing = sessions.frame_timing(received, camera.consumed if camera else index, not bool(camera))
             try:
                 result = engine.process_frame(raw, timestamp=received_utc, clock=received, frame_timing=timing)
@@ -173,6 +178,8 @@ def run(args):
     finally:
         if camera:
             camera.close()
+        if gps:
+            gps.close()
         lock.close()
     final_status = json.loads((output / 'status.json').read_text()) if (output / 'status.json').exists() else {}
     final_status.update(state='STOPPED', updated_at=time.time(), captures=engine.total_captures)

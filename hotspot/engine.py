@@ -774,6 +774,7 @@ class RadiometricAutoCaptureEngine:
                 "format": "Y16 (centi-Kelvin)"
             }
         }
+        metadata["gps"] = getattr(self, "gps_snapshot", {"valid": False, "reason": "unavailable"})
         if frame_timing is not None:
             metadata['frame_timing'] = frame_timing
             metadata['session_id'] = frame_timing.get('session_id')
