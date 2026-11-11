@@ -14,6 +14,7 @@ import time
 from .engine import RadiometricAutoCaptureEngine, celsius_to_centikelvin, render_annotated_thermal_image
 from .live import LiveCamera
 from .gps import GPSReader
+from .qa_video import VideoQA
 from edge.commands import Commands
 from edge.sessions import Sessions
 from edge.storage import digest
@@ -75,6 +76,7 @@ def run(args):
     last_event = {}
     commands = Commands(output.parent.parent)
     sessions = Sessions(output.parent.parent, engine.device_id)
+    qa_video = VideoQA(output)
     preview_path = output / 'preview.png'
     last_preview = 0.0
     last_preview_at = None
@@ -104,6 +106,7 @@ def run(args):
                 raise OSError('Insufficient free disk space; captures retained, service stopping')
             raw = camera.read() if camera else synthetic_frame(index)
             if camera and raw is None:
+                qa_video.update(time.monotonic())
                 engine.reset_persistence()
                 last_preview_at = None
                 status = dict(last_event, state=camera.state, source=args.source,
@@ -146,6 +149,7 @@ def run(args):
                     last_event = dict(last_capture_path=saved, last_capture_kind='manual_test')
                 except Exception as error:
                     commands.finish(request_id, {'error': str(error)}, failed=True)
+            qa_video.update(received, raw)
             pixels = [v / 100 - 273.15 for v in raw]
             status = {k: v for k, v in result.items() if k != 'hotspots'}
             if time.monotonic() - last_preview >= .2:
@@ -176,6 +180,7 @@ def run(args):
         atomic_json(output / 'status.json', {'state': 'ERROR', 'error': str(error), 'updated_at': time.time()})
         raise
     finally:
+        qa_video.abort()
         if camera:
             camera.close()
         if gps:

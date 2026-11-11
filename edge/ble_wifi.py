@@ -5,8 +5,10 @@ import hmac
 import json
 import logging
 import secrets
+import shutil
 import subprocess
 import time
+import uuid
 from pathlib import Path
 
 SERVICE = 'e7d60001-72a3-4f9e-9148-7d1a6c8b2100'
@@ -41,7 +43,7 @@ class Controller:
         try:
             data = json.loads(payload)
             command, nonce = data['command'], data['nonce']
-            if command not in ('on', 'off', 'status', 'reboot', 'shutdown') or nonce != self.nonce:
+            if command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now') or nonce != self.nonce:
                 return None
             if self.clock() > self.expires:
                 return None
@@ -65,6 +67,29 @@ class Controller:
 
     def execute(self, command):
         try:
+            if command in ('video_start', 'video_status', 'video_now'):
+                folder = Path('/run/tilik-qa-video')
+                folder.mkdir(mode=0o770, exist_ok=True)
+                shutil.chown(folder, group='pi')
+                folder.chmod(0o770)
+                status = folder / 'status.json'
+                current = json.loads(status.read_text()) if status.exists() else {}
+                if command in ('video_start', 'video_now'):
+                    if command == 'video_start' and current.get('state') == 'running' and time.time() - current.get('updated_at', 0) < 5:
+                        self.result = {'error': 'video_already_running'}
+                        return
+                    request = {'id': str(uuid.uuid4()), 'created': time.time(), 'immediate': command == 'video_now'}
+                    temp = folder / ('request-' + request['id'])
+                    temp.write_text(json.dumps(request))
+                    shutil.chown(temp, group='pi')
+                    temp.chmod(0o640)
+                    temp.replace(folder / 'start.json')
+                    self.result = {'video': 'requested'}
+                else:
+                    self.result = {'video': current.get('state', 'unknown'),
+                                   'saved': sum(c.get('state') == 'saved' for c in current.get('clips', [])),
+                                   'failed': sum(c.get('state') == 'failed' for c in current.get('clips', []))}
+                return
             if command in ('reboot', 'shutdown'):
                 action = 'reboot' if command == 'reboot' else 'poweroff'
                 self.run('systemd-run', '--unit=tilik-ble-power', '--on-active=10s', '/usr/bin/systemctl', action)
@@ -85,7 +110,7 @@ class Controller:
                 self.result['error'] = 'hotspot_not_ready'
             if command == 'off' and wifi != 'disabled':
                 self.result['error'] = 'wifi_not_disabled'
-        except (subprocess.SubprocessError, OSError) as error:
+        except (subprocess.SubprocessError, OSError, ValueError) as error:
             logging.warning('Wi-Fi command %s failed: %s', command, error)
             self.result = {'error': 'system_command_failed'}
         finally:

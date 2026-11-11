@@ -1,6 +1,7 @@
 import hmac
 import json
 import os
+import re
 import ssl
 import threading
 import time
@@ -175,6 +176,25 @@ class Handler(BaseHTTPRequestHandler):
                                  'capture_allowed': self.control_allowed(capture=True)}})
             elif path == '/api/rules':
                 self.send(json.loads(settings['rules'].read_text()))
+            elif path == '/api/qa-videos':
+                root = settings['data_dir'] / 'captures' / settings['source'] / 'qa-videos'
+                pattern = re.compile(r'^[0-9a-f-]{36}_minute_(2|5|8|11|14)\.mp4$')
+                state_path = Path('/run/tilik-qa-video/status.json')
+                state = json.loads(state_path.read_text()) if state_path.exists() else {}
+                active = {state.get('session', '') + '_minute_' + str(c.get('minute')) + '.mp4' for c in state.get('clips', []) if c.get('state') != 'saved'}
+                files = sorted((p for p in root.glob('*.mp4') if p.name not in active and pattern.fullmatch(p.name) and p.is_file() and not p.is_symlink()), reverse=True) if root.exists() else []
+                self.send([{'name': p.name, 'size': p.stat().st_size, 'sha256': digest(p.read_bytes())} for p in files])
+            elif path.startswith('/api/qa-videos/'):
+                name = path[len('/api/qa-videos/'):]
+                if not re.fullmatch(r'[0-9a-f-]{36}_minute_(2|5|8|11|14)\.mp4', name):
+                    raise FileNotFoundError()
+                file = settings['data_dir'] / 'captures' / settings['source'] / 'qa-videos' / name
+                state_path = Path('/run/tilik-qa-video/status.json')
+                state = json.loads(state_path.read_text()) if state_path.exists() else {}
+                active = {state.get('session', '') + '_minute_' + str(c.get('minute')) + '.mp4' for c in state.get('clips', []) if c.get('state') != 'saved'}
+                if name in active or file.is_symlink() or not file.is_file():
+                    raise FileNotFoundError()
+                self.send(file.read_bytes(), mime='video/mp4')
             elif path == '/api/captures':
                 if versioned:
                     q = parse_qs(parsed.query)
