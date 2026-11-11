@@ -264,3 +264,10 @@ See [Camera lifecycle and deployment](docs/CAMERA_LIFECYCLE.md): API stays avail
 Open the dashboard on any reachable Pi IPv4 address, for example `http://10.42.0.1:8080/` on Tilik-Payload or the router-assigned Pi IP. Manual capture is permitted over the network by default; an SSH tunnel is not required for that action. The caller still needs a ready camera; an unplugged/warming-up camera returns503. Configured API tokens remain required.
 
 Without a token, rule changes and clock/session administration remain local-only. The dashboard reports `controls.capture_allowed` separately from `controls.allowed`, which continues to mean privileged rule/control access. Cross-origin browser writes remain rejected. To restore local-only manual capture, set the JSON boolean `"allow_remote_capture": false` in the active runtime config and restart only `tilik-api`. All network participants able to reach an unauthenticated API can request captures when this setting is enabled.
+
+## Bluetooth Wi-Fi control (optional)
+
+Use the authenticated BLE service and Mac utility to switch payload Wi-Fi off/on
+without SSH or rebooting. See [installation, protocol, and grounded test procedure](docs/BLE_WIFI.md).
+Capture/GPS remain independent. iOS integration and in-flight RF validation are
+not included in this edge feature.
