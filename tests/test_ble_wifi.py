@@ -16,6 +16,8 @@ class BLETests(unittest.TestCase):
                 self.wifi = 'disabled'
             if args == ('systemctl', 'restart', 'tilik-hotspot.service'):
                 self.wifi = 'enabled'
+            if 'GENERAL.STATE' in args:
+                return '30 (disconnected)'
             if args[-1] == 'general':
                 return self.wifi
             return 'tilik-boot-hotspot' if self.wifi == 'enabled' else ''
@@ -72,6 +74,28 @@ class BLETests(unittest.TestCase):
         self.assertFalse(any('systemctl' in call or 'radio' in call for call in self.calls))
 
     def test_on_does_not_claim_success_without_ap(self):
-        self.c.run = lambda *args: 'enabled' if args[-1] == 'general' else ''
+        self.c.run = lambda *args: ('30 (disconnected)' if 'GENERAL.STATE' in args
+                                  else 'enabled' if args[-1] == 'general' else '')
         self.c.execute(self.c.accept(self.packet('on')))
         self.assertEqual(self.c.result['error'], 'hotspot_not_ready')
+
+    def test_waits_for_device_before_hotspot_activation(self):
+        original = self.c.run
+        states = iter(['20 (unavailable)', '20 (unavailable)', '30 (disconnected)'])
+        waits = []
+        self.c.sleep = waits.append
+        def run(*args):
+            if 'GENERAL.STATE' in args:
+                return next(states)
+            return original(*args)
+        self.c.run = run
+        self.c.execute(self.c.accept(self.packet('on')))
+        self.assertEqual(waits, [0.5, 0.5])
+        self.assertTrue(self.c.result['hotspot'])
+
+    def test_unavailable_device_does_not_start_retrying_hotspot(self):
+        self.c.sleep = lambda seconds: None
+        self.c.run = lambda *args: self.calls.append(args) or '20 (unavailable)'
+        self.c.execute(self.c.accept(self.packet('on')))
+        self.assertIn('error', self.c.result)
+        self.assertFalse(any('systemctl' in args for args in self.calls))

@@ -18,8 +18,8 @@ def signature(key, nonce, command):
 
 
 class Controller:
-    def __init__(self, key, run=None, clock=time.monotonic):
-        self.key, self.clock = key, clock
+    def __init__(self, key, run=None, clock=time.monotonic, sleep=time.sleep):
+        self.key, self.clock, self.sleep = key, clock, sleep
         self.run = run or self._run
         self.busy = False
         self.result = 'ready'
@@ -53,6 +53,16 @@ class Controller:
         self.busy, self.result, self.request = True, 'working', nonce
         return command
 
+    def wait_wifi_ready(self):
+        # nmcli radio on returns before the Linux Wi-Fi device is usable.
+        for _ in range(30):
+            state = self.run('nmcli', '-g', 'GENERAL.STATE', 'device', 'show', 'wlan0')
+            code = state.split(' ', 1)[0]
+            if code.isdigit() and int(code) >= 30:
+                return
+            self.sleep(0.5)
+        raise TimeoutError('wlan0 did not become ready after enabling Wi-Fi')
+
     def execute(self, command):
         try:
             if command == 'off':
@@ -60,6 +70,8 @@ class Controller:
                 self.run('systemctl', 'stop', 'tilik-hotspot.service')
                 self.run('nmcli', '--wait', '10', 'radio', 'wifi', 'off')
             elif command == 'on':
+                self.run('nmcli', '--wait', '10', 'radio', 'wifi', 'on')
+                self.wait_wifi_ready()
                 self.run('systemctl', 'restart', 'tilik-hotspot.service')
             wifi = self.run('nmcli', '-t', '-f', 'WIFI', 'general')
             active = self.run('nmcli', '-t', '-f', 'NAME', 'connection', 'show', '--active')

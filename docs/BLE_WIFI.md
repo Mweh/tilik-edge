@@ -73,8 +73,14 @@ Wi-Fi; `sudo systemctl restart tilik-hotspot.service` restores the AP explicitly
 ## Commissioning evidence (2026-11-11)
 
 Mac-to-Pi BLE authenticated STATUS succeeded; OFF reported Wi-Fi disabled and AP
-inactive. ON initially exceeded the command wait; a subsequent authenticated
-STATUS confirmed Wi-Fi enabled and AP active. The subprocess wait now exceeds
-the hotspot unit's 50-second startup timeout. A wrong-key request was rejected
-on the real Pi. Final reconnect/continuity checks must be recorded separately;
-these results do not establish in-flight RF safety or iOS integration.
+inactive. ON initially reported a system-command failure; a subsequent authenticated
+STATUS confirmed Wi-Fi enabled and AP active. Pi logs then established that
+NetworkManager initially rejected AP activation because wlan0 was not ready;
+the existing boot unit's 15-second retry restored it. The controller now enables
+Wi-Fi, waits for wlan0 readiness, then activates the hotspot. Its subprocess wait
+also exceeds the hotspot unit's 50-second startup timeout. A wrong-key request
+was rejected on the real Pi. Capture retained PID 809 and its original start
+time through the radio cycle; the same PID retained the GPS serial port.
+This verifies process continuity, not GPS fix quality. The final readiness fix
+has unit coverage; the complete radio cycle with that fix must be retested on
+the ground. These results do not establish in-flight RF safety or iOS integration.
