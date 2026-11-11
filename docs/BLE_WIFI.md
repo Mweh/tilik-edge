@@ -84,3 +84,9 @@ time through the radio cycle; the same PID retained the GPS serial port.
 This verifies process continuity, not GPS fix quality. The final readiness fix
 has unit coverage; the complete radio cycle with that fix must be retested on
 the ground. These results do not establish in-flight RF safety or iOS integration.
+
+Debug clients may authenticate `reboot` or `shutdown` with the same nonce/HMAC
+protocol. A successful result contains `power_action` and `scheduled: true`;
+this means systemd accepted a 10-second delayed action, not that shutdown or
+reboot completed. Capture stops when the device powers down. The current boot
+hotspot service enables Wi-Fi after reboot; only test on the ground.

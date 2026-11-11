@@ -41,7 +41,7 @@ class Controller:
         try:
             data = json.loads(payload)
             command, nonce = data['command'], data['nonce']
-            if command not in ('on', 'off', 'status') or nonce != self.nonce:
+            if command not in ('on', 'off', 'status', 'reboot', 'shutdown') or nonce != self.nonce:
                 return None
             if self.clock() > self.expires:
                 return None
@@ -65,6 +65,11 @@ class Controller:
 
     def execute(self, command):
         try:
+            if command in ('reboot', 'shutdown'):
+                action = 'reboot' if command == 'reboot' else 'poweroff'
+                self.run('systemd-run', '--unit=tilik-ble-power', '--on-active=10s', '/usr/bin/systemctl', action)
+                self.result = {'power_action': command, 'scheduled': True}
+                return
             if command == 'off':
                 # Stop the boot unit first so its retry cannot re-enable Wi-Fi.
                 self.run('systemctl', 'stop', 'tilik-hotspot.service')

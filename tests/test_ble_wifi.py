@@ -99,3 +99,9 @@ class BLETests(unittest.TestCase):
         self.c.execute(self.c.accept(self.packet('on')))
         self.assertIn('error', self.c.result)
         self.assertFalse(any('systemctl' in args for args in self.calls))
+
+    def test_power_commands_schedule_and_confirm(self):
+        for command, action in [('reboot', 'reboot'), ('shutdown', 'poweroff')]:
+            self.c.execute(self.c.accept(self.packet(command)))
+            self.assertEqual(self.c.result, {'power_action': command, 'scheduled': True})
+            self.assertIn(('systemd-run', '--unit=tilik-ble-power', '--on-active=10s', '/usr/bin/systemctl', action), self.calls)
