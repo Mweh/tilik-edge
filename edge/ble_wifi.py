@@ -43,7 +43,7 @@ class Controller:
         try:
             data = json.loads(payload)
             command, nonce = data['command'], data['nonce']
-            if command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now') or nonce != self.nonce:
+            if command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now', 'ble_stop') or nonce != self.nonce:
                 return None
             if self.clock() > self.expires:
                 return None
@@ -89,6 +89,10 @@ class Controller:
                     self.result = {'video': current.get('state', 'unknown'),
                                    'saved': sum(c.get('state') == 'saved' for c in current.get('clips', [])),
                                    'failed': sum(c.get('state') == 'failed' for c in current.get('clips', []))}
+                return
+            if command == 'ble_stop':
+                self.run('systemd-run', '--unit=tilik-ble-stop', '--on-active=5s', '/usr/bin/systemctl', 'stop', 'tilik-ble.service')
+                self.result = {'ble': 'stop_scheduled'}
                 return
             if command in ('reboot', 'shutdown'):
                 action = 'reboot' if command == 'reboot' else 'poweroff'
