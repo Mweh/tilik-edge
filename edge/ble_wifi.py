@@ -43,7 +43,7 @@ class Controller:
         try:
             data = json.loads(payload)
             command, nonce = data['command'], data['nonce']
-            if command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now', 'ble_stop') or nonce != self.nonce:
+            if command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now', 'ble_stop', 'spam_start', 'spam_status') or nonce != self.nonce:
                 return None
             if self.clock() > self.expires:
                 return None
@@ -67,6 +67,30 @@ class Controller:
 
     def execute(self, command):
         try:
+            if command in ('spam_start', 'spam_status'):
+                folder = Path('/run/tilik-qa-video')
+                folder.mkdir(mode=0o770, exist_ok=True)
+                shutil.chown(folder, group='pi')
+                folder.chmod(0o770)
+                status = folder / 'spam-status.json'
+                current = json.loads(status.read_text()) if status.exists() else {}
+                fresh = time.time() - current.get('updated_at', 0) < 5
+                if command == 'spam_start':
+                    if fresh and current.get('state') == 'running':
+                        self.result = {'error': 'spam_already_running'}
+                        return
+                    request = {'id': str(uuid.uuid4()), 'created': time.time()}
+                    temp = folder / ('spam-' + request['id'])
+                    temp.write_text(json.dumps(request))
+                    shutil.chown(temp, group='pi')
+                    temp.chmod(0o640)
+                    temp.replace(folder / 'spam-start.json')
+                    self.result = {'spam': 'requested'}
+                else:
+                    self.result = {'spam': current.get('state', 'unknown') if fresh or current.get('state') == 'complete' else 'unavailable',
+                        'saved': current.get('saved', 0), 'failed': current.get('failed', 0),
+                        'skipped': current.get('skipped', 0)}
+                return
             if command in ('video_start', 'video_status', 'video_now'):
                 folder = Path('/run/tilik-qa-video')
                 folder.mkdir(mode=0o770, exist_ok=True)

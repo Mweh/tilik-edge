@@ -15,6 +15,7 @@ from .engine import RadiometricAutoCaptureEngine, celsius_to_centikelvin, render
 from .live import LiveCamera
 from .gps import GPSReader
 from .qa_video import VideoQA
+from .qa_spam import SpamCapture
 from edge.commands import Commands
 from edge.sessions import Sessions
 from edge.storage import digest
@@ -77,6 +78,7 @@ def run(args):
     commands = Commands(output.parent.parent)
     sessions = Sessions(output.parent.parent, engine.device_id)
     qa_video = VideoQA(output)
+    qa_spam = SpamCapture()
     preview_path = output / 'preview.png'
     last_preview = 0.0
     last_preview_at = None
@@ -107,6 +109,7 @@ def run(args):
             raw = camera.read() if camera else synthetic_frame(index)
             if camera and raw is None:
                 qa_video.update(time.monotonic())
+                qa_spam.update(time.monotonic())
                 engine.reset_persistence()
                 last_preview_at = None
                 status = dict(last_event, state=camera.state, source=args.source,
@@ -149,6 +152,19 @@ def run(args):
                     last_event = dict(last_capture_path=saved, last_capture_kind='manual_test')
                 except Exception as error:
                     commands.finish(request_id, {'error': str(error)}, failed=True)
+            def save_scheduled():
+                nonlocal engine
+                pixels = [v / 100 - 273.15 for v in raw]
+                saved = engine._save_capture_bundle(raw, pixels, result['hotspots'],
+                    result['threshold_celsius'], result['bg_median_celsius'], result['mad_celsius'],
+                    result['min_celsius'], result['max_celsius'], received_utc,
+                    trigger_kind='scheduled_test', frame_timing=timing)
+                engine.total_captures += 1
+                return saved
+            scheduled_path = qa_spam.update(received, save_scheduled)
+            if scheduled_path:
+                last_event = dict(last_capture_path=scheduled_path, last_capture_kind='scheduled_test')
+                LOG.info('SCHEDULED_CAPTURED %s', scheduled_path)
             qa_video.update(received, raw)
             pixels = [v / 100 - 273.15 for v in raw]
             status = {k: v for k, v in result.items() if k != 'hotspots'}

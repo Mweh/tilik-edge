@@ -90,3 +90,12 @@ protocol. A successful result contains `power_action` and `scheduled: true`;
 this means systemd accepted a 10-second delayed action, not that shutdown or
 reboot completed. Capture stops when the device powers down. The current boot
 hotspot service enables Wi-Fi after reboot; only test on the ground.
+
+## Scheduled thermal capture QA
+
+Authenticated `spam_start` starts a 10-minute schedule, independent of video QA.
+Frames are saved at 0–280 seconds every 20 seconds, then 300/320/340,
+420/440/460, and 540/560/580. `spam_status` reports saved, failed and skipped.
+The normal rule-based hotspot monitor continues; unlike commit 11b379a, the
+camera service does not stop after the schedule. Missed slots are skipped.
+A service restart interrupts the schedule; it is not resumed after reboot.
