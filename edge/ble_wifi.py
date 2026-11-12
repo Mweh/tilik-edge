@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 import shutil
 import subprocess
@@ -43,7 +44,7 @@ class Controller:
         try:
             data = json.loads(payload)
             command, nonce = data['command'], data['nonce']
-            if command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now', 'ble_stop', 'spam_start', 'spam_status') or nonce != self.nonce:
+            if not isinstance(command, str) or (command not in ('on', 'off', 'status', 'reboot', 'shutdown', 'video_start', 'video_status', 'video_now', 'ble_stop', 'spam_start', 'spam_status', 'threshold_status') and not re.fullmatch(r'threshold_set:-?\d{1,3}(?:\.\d{1,2})?', command)) or nonce != self.nonce:
                 return None
             if self.clock() > self.expires:
                 return None
@@ -67,6 +68,29 @@ class Controller:
 
     def execute(self, command):
         try:
+            if command == 'threshold_status' or command.startswith('threshold_set:'):
+                folder = Path('/run/tilik-qa-video')
+                folder.mkdir(mode=0o770, exist_ok=True)
+                shutil.chown(folder, group='pi')
+                folder.chmod(0o770)
+                if command.startswith('threshold_set:'):
+                    value = float(command.split(':', 1)[1])
+                    if not -40 <= value <= 300:
+                        self.result = {'error': 'invalid_threshold'}
+                        return
+                    request = {'id': str(uuid.uuid4()), 'created': time.time(), 'value': value}
+                    (folder / 'threshold-result.json').unlink(missing_ok=True)
+                    temp = folder / ('threshold-' + request['id'])
+                    temp.write_text(json.dumps(request))
+                    shutil.chown(temp, group='pi')
+                    temp.chmod(0o640)
+                    temp.replace(folder / 'threshold-request.json')
+                    self.result = {'threshold': 'requested'}
+                else:
+                    result_path = folder / 'threshold-result.json'
+                    current = json.loads(result_path.read_text()) if result_path.exists() else {}
+                    self.result = {'threshold': current.get('state', 'unknown'), 'value': current.get('value')}
+                return
             if command in ('spam_start', 'spam_status'):
                 folder = Path('/run/tilik-qa-video')
                 folder.mkdir(mode=0o770, exist_ok=True)

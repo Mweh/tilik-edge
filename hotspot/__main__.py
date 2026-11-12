@@ -16,6 +16,7 @@ from .live import LiveCamera
 from .gps import GPSReader
 from .qa_video import VideoQA
 from .qa_spam import SpamCapture
+from .qa_threshold import apply_pending
 from edge.commands import Commands
 from edge.sessions import Sessions
 from edge.storage import digest
@@ -90,6 +91,7 @@ def run(args):
             camera = LiveCamera(args.device, args.warmup_seconds)
         while not stopped and (args.frames == 0 or index < args.frames):
             started = time.monotonic()
+            apply_pending(args.config)
             stamp = Path(args.config).stat().st_mtime_ns
             if stamp != config_stamp:
                 try:
